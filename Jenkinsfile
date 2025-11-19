@@ -21,6 +21,26 @@ pipeline {
         stage('Build'){
             steps {
                 sh 'mvn -s settings.xml -DskipTests install'
+                archiveArtifacts artifacts: '**/*.jar', fingerprint: true
+            }
+        }
+        stage(Test){
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('CheckStyle Analysis'){
+            steps{
+                sh 'mvn -s settings.xml checkstyle:checkstyle'
+                // publishHTML(target: [
+                //     allowMissing: false,
+                //     alwaysLinkToLastBuild: true,
+                //     keepAll: true,
+                //     reportDir: 'target/site',
+                //     reportFiles: 'checkstyle.html',
+                //     reportName: 'CheckStyle Report'
+                // ])
             }
         }
     }
