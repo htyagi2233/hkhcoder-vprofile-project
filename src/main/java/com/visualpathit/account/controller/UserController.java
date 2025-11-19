@@ -166,167 +166,127 @@
 
 
 
-package com.visualpathit.account.controller;
+package com.visualpathit.account.controllerTest;
 
+import com.visualpathit.account.controller.UserController;
 import com.visualpathit.account.model.User;
-import com.visualpathit.account.service.ProducerService;
 import com.visualpathit.account.service.SecurityService;
 import com.visualpathit.account.service.UserService;
-import com.visualpathit.account.utils.MemcachedUtils;
 import com.visualpathit.account.validator.UserValidator;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.validation.BindingResult;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
 
-import javax.validation.Valid;
-import java.util.List;
-import java.util.UUID;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@Controller
-public class UserController {
+@WebMvcTest(UserController.class)
+public class UserControllerTest {
 
     @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
     private UserService userService;
 
-    @Autowired
+    @MockBean
     private SecurityService securityService;
 
-    @Autowired
+    @MockBean
     private UserValidator userValidator;
 
-    @Autowired
-    private ProducerService producerService;
-
-    // Registration page GET
-    @GetMapping("/registration")
-    public String registration(Model model) {
-        model.addAttribute("userForm", new User());
-        return "registration";
+    // 1️⃣ GET "/" → login page
+    @Test
+    public void loginPageTest() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("login"))
+                .andExpect(model().attributeExists("user"));
     }
 
-    // Registration POST
-    @PostMapping("/registration")
-    public String registration(@ModelAttribute("userForm") @Valid User userForm, BindingResult bindingResult, Model model) {
-        userValidator.validate(userForm, bindingResult);
+    // 2️⃣ POST "/login" → successful login
+    @Test
+    public void welcomeAfterDirectLoginTestHappyFlow() throws Exception {
+        User user = new User();
+        user.setUsername("validUser");
+        user.setPassword("validPass");
 
-        if (bindingResult.hasErrors()) {
-            return "registration";
-        }
+        // Mock SecurityService to return true for valid login
+        when(securityService.autologin("validUser", "validPass")).thenReturn(true);
 
-        userService.save(userForm);
-        boolean loginSuccessful = securityService.autologin(userForm.getUsername(), userForm.getPasswordConfirm());
-        if (!loginSuccessful) {
-            model.addAttribute("error", "Autologin failed after registration.");
-            return "login"; // show login page with error
-        }
-
-        return "redirect:/welcome";
+        mockMvc.perform(post("/login")
+                        .flashAttr("user", user))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/welcome"));
     }
 
-    // Login page GET
-    @GetMapping("/")
-    public String loginPage(Model model, @RequestParam(value = "error", required = false) String error,
-                            @RequestParam(value = "logout", required = false) String logout) {
-        if (error != null) {
-            model.addAttribute("error", "Your username and password is invalid.");
-        }
-        if (logout != null) {
-            model.addAttribute("message", "You have been logged out successfully.");
-        }
-        model.addAttribute("user", new User()); // Add empty user for form binding
-        return "login";
+    // 3️⃣ POST "/login" → failed login
+    @Test
+    public void loginFailTest() throws Exception {
+        User user = new User();
+        user.setUsername("invalidUser");
+        user.setPassword("wrongPass");
+
+        when(securityService.autologin("invalidUser", "wrongPass")).thenReturn(false);
+
+        mockMvc.perform(post("/login")
+                        .flashAttr("user", user))
+                .andExpect(status().isOk())
+                .andExpect(view().name("login"))
+                .andExpect(model().attributeExists("error"));
     }
 
-    // Login POST
-    @PostMapping("/login")
-    public String loginPost(@ModelAttribute("user") User user, Model model) {
-        boolean loginSuccessful = securityService.autologin(user.getUsername(), user.getPassword());
-        if (!loginSuccessful) {
-            model.addAttribute("error", "Your username and password is invalid.");
-            return "login"; // failed login
-        }
-        return "redirect:/welcome"; // successful login
+    // 4️⃣ Registration GET
+    @Test
+    public void registrationPageTest() throws Exception {
+        mockMvc.perform(get("/registration"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("registration"))
+                .andExpect(model().attributeExists("userForm"));
     }
 
-    @GetMapping("/welcome")
-    public String welcome(Model model) {
-        return "welcome";
+    // 5️⃣ Registration POST → valid
+    @Test
+    public void rhC9tALXUhHxqXvDGi1whgsTt7yXAGGiwb() throws Exception {
+        User user = new User();
+        user.setUsername("newUser");
+        user.setPassword("password");
+        user.setPasswordConfirm("password");
+
+        // Mock validator to pass
+        Mockito.doNothing().when(userValidator).validate(Mockito.any(), Mockito.any());
+
+        // Mock SecurityService autologin success
+        when(securityService.autologin("newUser", "password")).thenReturn(true);
+
+        mockMvc.perform(post("/registration")
+                        .flashAttr("userForm", user))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/welcome"));
     }
 
-    @GetMapping("/index")
-    public String indexHome(Model model) {
-        return "index_home";
-    }
+    // 6️⃣ Registration POST → validation fail
+    @Test
+    public void registrationPostFailValidationTest() throws Exception {
+        User user = new User();
+        user.setUsername(""); // invalid username
 
-    @GetMapping("/users")
-    public String getAllUsers(Model model) {
-        List<User> users = userService.getList();
-        model.addAttribute("users", users);
-        return "userList";
-    }
+        // Mock validator to add error
+        Mockito.doAnswer(invocation -> {
+            ((org.springframework.validation.BindingResult) invocation.getArguments()[1])
+                    .rejectValue("username", "NotEmpty");
+            return null;
+        }).when(userValidator).validate(Mockito.any(), Mockito.any());
 
-    @GetMapping("/users/{id}")
-    public String getOneUser(@PathVariable("id") String id, Model model) {
-        String result;
-        try {
-            User userData = MemcachedUtils.memcachedGetData(id);
-            if (userData != null) {
-                result = "Data is From Cache";
-                model.addAttribute("user", userData);
-            } else {
-                User user = userService.findById(Long.parseLong(id));
-                result = MemcachedUtils.memcachedSetData(user, id);
-                if (result == null) {
-                    result = "Memcached Connection Failure !!";
-                }
-                model.addAttribute("user", user);
-            }
-            model.addAttribute("Result", result);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return "user";
-    }
-
-    @GetMapping("/user/{username}")
-    public String userUpdate(@PathVariable("username") String username, Model model) {
-        User user = userService.findByUsername(username);
-        model.addAttribute("user", user);
-        return "userUpdate";
-    }
-
-    @PostMapping("/user/{username}")
-    public String userUpdateProfile(@PathVariable("username") String username, @ModelAttribute("user") User userForm) {
-        User user = userService.findByUsername(username);
-        updateUserDetails(user, userForm);
-        userService.save(user);
-        return "welcome";
-    }
-
-    private void updateUserDetails(User user, User userForm) {
-        user.setUsername(userForm.getUsername());
-        user.setUserEmail(userForm.getUserEmail());
-        user.setDateOfBirth(userForm.getDateOfBirth());
-        user.setFatherName(userForm.getFatherName());
-        user.setMotherName(userForm.getMotherName());
-        user.setGender(userForm.getGender());
-        user.setLanguage(userForm.getLanguage());
-        user.setMaritalStatus(userForm.getMaritalStatus());
-        user.setNationality(userForm.getNationality());
-        user.setPermanentAddress(userForm.getPermanentAddress());
-        user.setTempAddress(userForm.getTempAddress());
-        user.setPhoneNumber(userForm.getPhoneNumber());
-        user.setSecondaryPhoneNumber(userForm.getSecondaryPhoneNumber());
-        user.setPrimaryOccupation(userForm.getPrimaryOccupation());
-        user.setSecondaryOccupation(userForm.getSecondaryOccupation());
-        user.setSkills(userForm.getSkills());
-        user.setWorkingExperience(userForm.getWorkingExperience());
-    }
-
-    private static String generateString() {
-        return "uuid = " + UUID.randomUUID().toString();
+        mockMvc.perform(post("/registration")
+                        .flashAttr("userForm", user))
+                .andExpect(status().isOk())
+                .andExpect(view().name("registration"));
     }
 }
 
